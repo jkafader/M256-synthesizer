@@ -45,20 +45,22 @@ Adafruit_Trellis matrix7 = Adafruit_Trellis();
 #define OUTPUT_PINS 16
 int update_required = 0;
 
-void updateXpntArray(uint16_t * switches){           // writes all the bits to chip and pulses the latch clock, so all the switches change at the same moment.
+uint16_t updateXpntArray(uint16_t * switches){           // writes all the bits to chip and pulses the latch clock, so all the switches change at the same moment.
     uint8_t row;
-    uint16_t last_byte = 0;
+    uint16_t checksum = 0;
     uint16_t mask = 0xFFFF;
     Serial.print("Crosspoint Matrix Data:\n");
-    SPI.beginTransaction(SPISettings(1000000, LSBFIRST, SPI_MODE0));
-    for(int row=0; row<16; row++){
-       Serial.print("row: ");
+    SPI.beginTransaction(SPISettings(20000, LSBFIRST, SPI_MODE0));
+    for(int row=15; row>=0; row--){
+       Serial.print("row ");
+       Serial.print(row);
+       Serial.print(": ");
        Serial.print(switches[row] & mask, BIN);
-       last_byte = SPI.transfer16(0);
+       checksum = checksum ^ SPI.transfer16(switches[row] & mask);
        Serial.print(" last value: ");
-       Serial.print(last_byte, BIN);
+       Serial.print(checksum, BIN);
        Serial.print("\n");
-    }
+    } 
     digitalWrite(PCLK_PIN, LOW);
     asm("nop"); // pclk pulse width 65ns minimum
     asm("nop");
@@ -67,48 +69,9 @@ void updateXpntArray(uint16_t * switches){           // writes all the bits to c
     asm("nop");
     SPI.endTransaction();
     update_required = 0;
+    return checksum;
 }
-/*
-void updateXpntArray(uint16_t * switches)           // writes all the bits to all 3 chips and pulses the latch clock, so all the switches change at the same moment.
-{
-  uint8_t row;
-  uint16_t rowBytes, mask;
-  Serial.print("Crosspoint Matrix Data:\n");
-  for (row = 0; row < OUTPUT_PINS; row++) {
-    rowBytes = switches[row];
-    // begin with 1000 0000 0000 0000
-    // bit shift right until the bit "falls off" pins.
-    // this will loop 16 times before stopping.
-    for (mask = 0x8000; mask; mask >>= 1) {
-      Serial.print((rowBytes & mask) ? 1 : 0, BIN);
-      Serial.print(" ");
-      digitalWrite(SIN_PIN, (rowBytes & mask) ? HIGH : LOW);  // SDI_PIN
-      // 20ns setup required
-      asm("nop"); // Each "nop" yields a 62.5 ns (nanosecond) delay
-      asm("nop");
-      digitalWrite(SCLK_PIN, HIGH);
-      asm("nop"); // sclk pulse width, 100 ns minimum
-      asm("nop");
-      asm("nop");
-      digitalWrite(SCLK_PIN, LOW);
-      asm("nop"); // 40ns hold time required
-    }
-    Serial.print("\n");
-  }
-  asm("nop"); // 65ns setup required
-  asm("nop");
-  digitalWrite(PCLK_PIN, LOW);
-  asm("nop"); // pclk pulse width 65ns minimum
-  asm("nop");
-  asm("nop");
-  asm("nop");
-  digitalWrite(PCLK_PIN, HIGH);
-  asm("nop");
-  asm("nop");
-  asm("nop");
-  update_required = 0;
-  // Serial.print("--------");
-}*/
+
 
 
 int * getPinArray(){
@@ -138,6 +101,7 @@ void disconnectAll(){
 
 void setup() {
   Serial.begin(9600);
+  SPI.begin();
 
   // INT pin requires a pullup
   //pinMode(INTPIN, INPUT);
@@ -196,14 +160,6 @@ int * updateDisplay(int * trellisButtons){
 void loop() {
   // send data only when you receive data:
   int incomingByte = 0;
-  if (Serial.available() > 0) {
-    // read the incoming byte:
-    incomingByte = Serial.read();
-
-    // say what you got:
-    Serial.print("I received: ");
-    Serial.println(incomingByte, DEC);
-  }
   delay(30); // 30ms delay is required, dont remove me!
 
   // If a button was just pressed or released...
@@ -212,17 +168,21 @@ void loop() {
       int * serialData = updateDisplay(trellisButtons);
       trellis.writeDisplay();
       // Serial.print("Switch Data:\n");
+      uint16_t switch_checksum = 0;
+      uint16_t matrix_checksum;
+      int count = 0;
       for(int i=0; i<16; i++){
-        for(uint16_t mask = 0x8000; mask; mask >>= 1){
-//          Serial.print((*(serialData + i) & mask) && 1 || 0, BIN);
-//          Serial.print(" ");
-        }
-//        Serial.print("\n");
+        switch_checksum = switch_checksum ^ serialData[i];
       }
-//      Serial.print("\n---\n");
-      if(update_required){
-//      Serial.print("updating Xpnt Array:\n");
-        updateXpntArray(serialData);
+      while(count == 0 || (count < 50 && switch_checksum != matrix_checksum)){
+        matrix_checksum = updateXpntArray(serialData);
+        count ++;
+        Serial.print("try #");
+        Serial.print(count);
+        Serial.print(": matrix_checksum: ");
+        Serial.print(matrix_checksum, BIN);
+        Serial.print(": switch_checksum: ");
+        Serial.println(switch_checksum, BIN);
       }
       // do i2c write to master here    
   }
