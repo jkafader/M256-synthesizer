@@ -9,8 +9,6 @@ void setup() {
 void loop() {
    int output = random(0,2);
    digitalWrite (SPK_PIN, output & 1);
-   delay(10);
-   output = random(0,2);
-   digitalWrite (SPK_PIN, output & 1);
+   //delay(1);
   // put your main code here, to run repeatedly:
 }

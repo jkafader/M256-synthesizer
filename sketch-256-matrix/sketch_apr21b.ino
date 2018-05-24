@@ -15,7 +15,7 @@
   MIT license, all text above must be included in any redistribution
  ****************************************************/
 
-#include <TinyWireM.h>                  // I2C Master lib for ATTinys which use USI
+#include <Wire.h>                  // I2C Master lib for ATTinys which use USI
 #include "Adafruit_Trellis.h"
 
 /***************************************************
@@ -36,10 +36,21 @@ Adafruit_Trellis matrix0 = Adafruit_Trellis();
 Adafruit_Trellis matrix1 = Adafruit_Trellis();
 Adafruit_Trellis matrix2 = Adafruit_Trellis();
 Adafruit_Trellis matrix3 = Adafruit_Trellis();
+
 Adafruit_Trellis matrix4 = Adafruit_Trellis();
 Adafruit_Trellis matrix5 = Adafruit_Trellis();
 Adafruit_Trellis matrix6 = Adafruit_Trellis();
 Adafruit_Trellis matrix7 = Adafruit_Trellis();
+
+Adafruit_Trellis matrix8 = Adafruit_Trellis();
+Adafruit_Trellis matrix9 = Adafruit_Trellis();
+Adafruit_Trellis matrixA = Adafruit_Trellis();
+Adafruit_Trellis matrixB = Adafruit_Trellis();
+
+Adafruit_Trellis matrixC = Adafruit_Trellis();
+Adafruit_Trellis matrixD = Adafruit_Trellis();
+Adafruit_Trellis matrixE = Adafruit_Trellis();
+Adafruit_Trellis matrixF = Adafruit_Trellis();
 
 // uncomment the below to add 3 more matrices
 /*
@@ -49,10 +60,13 @@ Adafruit_Trellis matrix7 = Adafruit_Trellis();
 // Just one
 //Adafruit_TrellisSet trellis =  Adafruit_TrellisSet(&matrix0);
 // or use the below to select 4, up to 8 can be passed in
-Adafruit_TrellisSet trellis =  Adafruit_TrellisSet(&matrix0, &matrix1, &matrix2, &matrix3, &matrix4, &matrix5, &matrix6, &matrix7);
+Adafruit_TrellisSet trellis[4] =  {Adafruit_TrellisSet(&matrix0, &matrix1, &matrix2, &matrix3),
+  Adafruit_TrellisSet(&matrix4, &matrix5, &matrix6, &matrix7),
+  Adafruit_TrellisSet(&matrix8, &matrix9, &matrixA, &matrixB),
+  Adafruit_TrellisSet(&matrixC, &matrixD, &matrixE, &matrixF)};
 
 // set to however many you're working with here, up to 8
-#define NUMTRELLIS 8
+#define NUMTRELLIS 16
 
 #define numKeys (NUMTRELLIS * 16)
 
@@ -64,6 +78,15 @@ Adafruit_TrellisSet trellis =  Adafruit_TrellisSet(&matrix0, &matrix1, &matrix2,
 // All Trellises share the SDA, SCL and INT pin!
 // Even 8 tiles use only 3 wires max
 
+#define MUXADDR 0x70
+ 
+void muxselect(uint8_t k) {
+  if (k > 7) return;
+ 
+  Wire.beginTransmission(MUXADDR);
+  Wire.write(1 << k);
+  Wire.endTransmission();  
+}
 
 void setup() {
   // Serial.begin(9600);
@@ -75,65 +98,57 @@ void setup() {
 
   // begin() with the addresses of each panel in order
   // I find it easiest if the addresses are in order
-  trellis.begin(0x70);  // only one
-  // trellis.begin(0x70, 0x71, 0x72, 0x73);  // or four!
 
-  // light up all the LEDs in order
-  for (uint8_t i = 0; i < numKeys; i++) {
-    trellis.setLED(i);
-    trellis.writeDisplay();
-    delay(50);
+  for(int j=0; j<4; j++){
+    muxselect(j);
+    trellis[j].begin(0x74, 0x75, 0x76, 0x77);  // or four!
+    // light up all the LEDs in order
+    for (uint8_t i = 0; i < 64; i++) {
+      trellis[j].setLED(i);
+      if((i + 1) % 16 == 0){
+        trellis[j].writeDisplay();
+        delay(30);
+      }
+    }
   }
-  // then turn them off
-  for (uint8_t i = 0; i < numKeys; i++) {
-    trellis.clrLED(i);
-    trellis.writeDisplay();
-    delay(50);
+  delay(1000);
+  for(int j=0; j<4; j++){
+    muxselect(j);
+    trellis[j].begin(0x74, 0x75, 0x76, 0x77);  // or four!
+    // then turn them off
+    for (uint8_t i = 0; i < 64; i++) {
+      trellis[j].clrLED(i);
+      if((i + 1) % 16 == 0){
+        trellis[j].writeDisplay();
+        delay(30);
+      }
+    }
   }
 }
 
 
 void loop() {
-  delay(30); // 30ms delay is required, dont remove me!
+  delay(20); // 30ms delay is required, dont remove me!
 
-  if (MODE == MOMENTARY) {
+  for(int j=0; j<4; j++){
+    muxselect(j);
+    trellis[j].begin(0x74, 0x75, 0x76, 0x77);  // or four!
     // If a button was just pressed or released...
-    if (trellis.readSwitches()) {
+    if (trellis[j].readSwitches()) {
       // go through every button
-      for (uint8_t i = 0; i < numKeys; i++) {
-        // if it was pressed, turn it on
-        if (trellis.justPressed(i)) {
-          //Serial.print("v"); Serial.println(i);
-          trellis.setLED(i);
-        }
-        // if it was released, turn it off
-        if (trellis.justReleased(i)) {
-          // Serial.print("^"); Serial.println(i);
-          trellis.clrLED(i);
-        }
-      }
-      // tell the trellis to set the LEDs we requested
-      trellis.writeDisplay();
-    }
-  }
-
-  if (MODE == LATCHING) {
-    // If a button was just pressed or released...
-    if (trellis.readSwitches()) {
-      // go through every button
-      for (uint8_t i = 0; i < numKeys; i++) {
+      for (uint8_t i = 0; i < 64; i++) {
         // if it was pressed...
-        if (trellis.justPressed(i)) {
+        if (trellis[j].justPressed(i)) {
           //Serial.print("v"); Serial.println(i);
           // Alternate the LED
-          if (trellis.isLED(i))
-            trellis.clrLED(i);
+          if (trellis[j].isLED(i))
+            trellis[j].clrLED(i);
           else
-            trellis.setLED(i);
+            trellis[j].setLED(i);
         }
       }
       // tell the trellis to set the LEDs we requested
-      trellis.writeDisplay();
+      trellis[j].writeDisplay();
     }
   }
 }
